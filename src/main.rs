@@ -5,6 +5,12 @@ mod db;
 // Allows multiple threads to safely share access to the database
 use std::sync::{Arc, Mutex};
 
+// Import the notify_rust crate for desktop notifications
+use notify_rust::Notification;
+
+// Import Path to reference your icon file
+use std::path::Path;
+
 fn main() {
     println!("📋 ClipTrack started...");
 
@@ -26,6 +32,17 @@ fn main() {
             // Lock the DB connection for writing, then save the clipboard entry
             let db = conn.lock().unwrap();
             db::save_clip(&db, &text);
+
+            // Use an absolute path to your PNG or SVG icon
+            let icon_path = Path::new("/home/khaishea/cliptrack/assets/cliptrack-icon.svg");
+
+            // Show a desktop notification with the copied text and custom icon
+            Notification::new()
+                .summary("Copied to Clipboard")
+                .body(&text)
+                .icon(icon_path.to_str().unwrap())
+                .show()
+                .unwrap();
         }
     });
 
