@@ -8,14 +8,13 @@ use gtk4::{gdk::Display, pango};
 use gtk4::style_context_add_provider_for_display;
 use glib::{self, clone, ControlFlow};
 
-use std::cell::{RefCell};
+use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::mpsc::Receiver;
 
 use crate::db;
 
 pub fn launch_gui(rx: Receiver<()>) {
-    // Wrap the receiver in Rc<RefCell> so we can clone and use it safely
     let rx = Rc::new(RefCell::new(rx));
 
     let app = Application::builder()
@@ -23,7 +22,7 @@ pub fn launch_gui(rx: Receiver<()>) {
         .build();
 
     app.connect_activate({
-        let rx = rx.clone(); // move the Rc<RefCell<Receiver>> into this closure
+        let rx = rx.clone();
         move |app| {
             // Load CSS
             let provider = CssProvider::new();
@@ -34,7 +33,6 @@ pub fn launch_gui(rx: Receiver<()>) {
                 STYLE_PROVIDER_PRIORITY_APPLICATION,
             );
 
-            // Optionally connect DB (not used directly here)
             let _conn = db::init_db().unwrap();
 
             let window = ApplicationWindow::builder()
@@ -61,7 +59,7 @@ pub fn launch_gui(rx: Receiver<()>) {
                 .child(&*list_box_ref.borrow())
                 .vexpand(true)
                 .build();
-            scroller.set_policy(PolicyType::Automatic, PolicyType::Automatic);
+            scroller.set_policy(PolicyType::Automatic, PolicyType::Never);
 
             vbox.append(&clear_button);
             vbox.append(&scroller);
@@ -82,19 +80,22 @@ pub fn launch_gui(rx: Receiver<()>) {
                     for (content, timestamp) in clips {
                         let row = ListBoxRow::new();
                         row.set_css_classes(&["clip-row"]);
+                        row.set_hexpand(true);
 
                         let row_box = GtkBox::new(Orientation::Vertical, 4);
                         row_box.set_margin_top(8);
                         row_box.set_margin_bottom(8);
                         row_box.set_margin_start(8);
                         row_box.set_margin_end(8);
+                        row_box.set_hexpand(true);
 
                         let label = Label::new(Some(&content));
                         label.set_wrap(true);
-                        label.set_max_width_chars(50);
-                        label.set_lines(3);
-                        label.set_ellipsize(pango::EllipsizeMode::End);
+                        label.set_wrap_mode(pango::WrapMode::WordChar);
+                        label.set_max_width_chars(60);
+                        label.set_ellipsize(pango::EllipsizeMode::None);
                         label.set_xalign(0.0);
+                        label.set_hexpand(true);
 
                         let ts = Label::new(Some(&timestamp));
                         ts.set_xalign(0.0);
