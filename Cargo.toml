@@ -1,0 +1,8 @@
+[package]
+name = "cliptrack"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+arboard = "3"
+rusqlite = "0.31"
