@@ -1,0 +1,17 @@
+.entry-row {
+    background-color: #e8e8e8;
+    border-radius: 6px;
+    padding: 10px;
+    margin: 6px;
+}
+
+.entry-row:selected {
+    background-color: #005fbf;
+    color: white;
+}
+
+.timestamp {
+    font-size: small;
+    color: #777;
+    margin-bottom: 4px;
+}

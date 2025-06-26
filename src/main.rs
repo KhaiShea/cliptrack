@@ -1,53 +1,42 @@
-// Import our two modules from clipboard.rs and db.rs
 mod clipboard;
 mod db;
+mod gui;
 
-// Allows multiple threads to safely share access to the database
-use std::sync::{Arc, Mutex};
-
-// Import the notify_rust crate for desktop notifications
+use std::sync::{Arc, Mutex, mpsc};
 use notify_rust::Notification;
-
-// Import Path to reference your icon file
-use std::path::Path;
 
 fn main() {
     println!("📋 ClipTrack started...");
 
-    // Initialise the database (creates the .db file if it doesn't exist)
     let conn = db::init();
-
-    // Wrap the database connection in Arc+Mutex so it can be safely shared across threads
     let conn = Arc::new(Mutex::new(conn));
 
-    // Start polling the clipboard in a separate thread
-    clipboard::start_polling({
-        // Clone the Arc so the thread gets access to the DB
-        let conn = Arc::clone(&conn);
+    // Channel to send clipboard update notifications to the GUI
+    let (tx, rx) = mpsc::channel();
 
-        // This function gets called every time new clipboard text is detected
+    // Start clipboard polling
+    clipboard::start_polling({
+        let conn = Arc::clone(&conn);
+        let tx = tx.clone(); // move a clone into the thread
+
         move |text| {
             println!("New clipboard text: {}", text);
-
-            // Lock the DB connection for writing, then save the clipboard entry
             let db = conn.lock().unwrap();
             db::save_clip(&db, &text);
 
-            // Use an absolute path to your PNG or SVG icon
-            let icon_path = Path::new("/home/khaishea/cliptrack/assets/cliptrack-icon.svg");
+            // Send update signal to GUI
+            let _ = tx.send(());
 
-            // Show a desktop notification with the copied text and custom icon
+            // Optional desktop notification
             Notification::new()
                 .summary("Copied to Clipboard")
                 .body(&text)
-                .icon(icon_path.to_str().unwrap())
+                .icon("/home/khaishea/cliptrack/assets/cliptrack-icon.png")
                 .show()
                 .unwrap();
         }
     });
 
-    // Keep the main thread alive forever (the polling runs in its own thread)
-    loop {
-        std::thread::sleep(std::time::Duration::from_secs(60));
-    }
+    // Launch the GUI and pass the receiver
+    gui::launch_gui(rx);
 }

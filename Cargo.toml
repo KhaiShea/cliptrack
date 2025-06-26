@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+gtk4 = "0.7"
+glib = "0.18"
 arboard = "3"
 rusqlite = "0.31"
 notify-rust = "4"
