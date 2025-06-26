@@ -1,142 +1,155 @@
 use gtk4::prelude::*;
 use gtk4::{
-    Application, ApplicationWindow, Box, CssProvider, GestureClick, Label, ListBox, ListBoxRow,
-    Orientation, ScrolledWindow, StyleContext, STYLE_PROVIDER_PRIORITY_APPLICATION,
+    Application, ApplicationWindow, Box as GtkBox, Button, CssProvider, Label, ListBox,
+    ListBoxRow, Orientation, PolicyType, ScrolledWindow,
+    STYLE_PROVIDER_PRIORITY_APPLICATION,
 };
-use gtk4::{glib, pango};
-use gtk4::{Align, SelectionMode};
-use gtk4::gdk::Display;
-use std::cell::RefCell;
+use gtk4::{gdk::Display, pango};
+use gtk4::style_context_add_provider_for_display;
+use glib::{self, clone, ControlFlow};
+
+use std::cell::{RefCell};
 use std::rc::Rc;
 use std::sync::mpsc::Receiver;
 
-use glib::clone;
 use crate::db;
 
-/// Launches the GTK GUI clipboard history viewer
 pub fn launch_gui(rx: Receiver<()>) {
+    // Wrap the receiver in Rc<RefCell> so we can clone and use it safely
     let rx = Rc::new(RefCell::new(rx));
 
     let app = Application::builder()
-        .application_id("com.khaishea.cliptrack")
+        .application_id("com.khai.cliptrack")
         .build();
 
-    app.connect_activate(move |app| {
-        // Load custom CSS (does not return Result)
-        let provider = CssProvider::new();
-        provider.load_from_path("style.css");
-        StyleContext::add_provider_for_display(
-            &Display::default().unwrap(),
-            &provider,
-            STYLE_PROVIDER_PRIORITY_APPLICATION,
-        );
+    app.connect_activate({
+        let rx = rx.clone(); // move the Rc<RefCell<Receiver>> into this closure
+        move |app| {
+            // Load CSS
+            let provider = CssProvider::new();
+            provider.load_from_path("style.css");
+            style_context_add_provider_for_display(
+                &Display::default().unwrap(),
+                &provider,
+                STYLE_PROVIDER_PRIORITY_APPLICATION,
+            );
 
-        let win = ApplicationWindow::builder()
-            .application(app)
-            .title("ClipTrack Clipboard History")
-            .default_width(500)
-            .default_height(600)
-            .build();
+            // Optionally connect DB (not used directly here)
+            let _conn = db::init_db().unwrap();
 
-        let vbox = Box::new(Orientation::Vertical, 5);
+            let window = ApplicationWindow::builder()
+                .application(app)
+                .title("📋 ClipTrack")
+                .default_width(420)
+                .default_height(500)
+                .build();
 
-        let list_box = ListBox::new();
-        list_box.set_selection_mode(SelectionMode::None);
-        let list_box_ref = Rc::new(RefCell::new(list_box));
+            let vbox = GtkBox::new(Orientation::Vertical, 8);
+            vbox.set_margin_top(10);
+            vbox.set_margin_bottom(10);
+            vbox.set_margin_start(10);
+            vbox.set_margin_end(10);
 
-        // Function to refresh the clipboard list
-        let update_list = {
-            let list_box_ref = list_box_ref.clone();
-            move || {
-                let conn = db::init();
-                let mut list_box = list_box_ref.borrow_mut();
+            let clear_button = Button::with_label("🧹 Clear History");
+            clear_button.set_halign(gtk4::Align::End);
 
-                while let Some(child) = list_box.first_child() {
-                    list_box.remove(&child);
-                }
+            let list_box = ListBox::new();
+            list_box.set_selection_mode(gtk4::SelectionMode::None);
+            let list_box_ref = Rc::new(RefCell::new(list_box));
 
-                let mut stmt = conn
-                    .prepare("SELECT content, copied_at FROM clipboard ORDER BY copied_at DESC LIMIT 100")
-                    .unwrap();
+            let scroller = ScrolledWindow::builder()
+                .child(&*list_box_ref.borrow())
+                .vexpand(true)
+                .build();
+            scroller.set_policy(PolicyType::Automatic, PolicyType::Automatic);
 
-                let entries = stmt
-                    .query_map([], |row| {
-                        let content: String = row.get(0)?;
-                        let copied_at: String = row.get(1)?;
-                        Ok((content, copied_at))
-                    })
-                    .unwrap();
+            vbox.append(&clear_button);
+            vbox.append(&scroller);
+            window.set_child(Some(&vbox));
+            window.show();
 
-                for item in entries {
-                    if let Ok((content, timestamp)) = item {
+            let update_list = {
+                let list_box_ref = list_box_ref.clone();
+                move || {
+                    let conn = db::init_db().unwrap();
+                    let clips = db::get_all_clips(&conn);
+                    let list_box = &*list_box_ref.borrow();
+
+                    while let Some(child) = list_box.first_child() {
+                        list_box.remove(&child);
+                    }
+
+                    for (content, timestamp) in clips {
                         let row = ListBoxRow::new();
-                        row.set_margin_top(6);
-                        row.set_margin_bottom(6);
-                        row.set_margin_start(6);
-                        row.set_margin_end(6);
-                        row.set_css_classes(&["entry-row"]);
+                        row.set_css_classes(&["clip-row"]);
 
-                        let entry_box = Box::new(Orientation::Vertical, 2);
-                        entry_box.set_halign(Align::Start);
-                        entry_box.set_valign(Align::Center);
+                        let row_box = GtkBox::new(Orientation::Vertical, 4);
+                        row_box.set_margin_top(8);
+                        row_box.set_margin_bottom(8);
+                        row_box.set_margin_start(8);
+                        row_box.set_margin_end(8);
 
-                        let timestamp_label = Label::new(Some(&timestamp));
-                        timestamp_label.set_css_classes(&["timestamp"]);
-                        timestamp_label.set_halign(Align::Start);
+                        let label = Label::new(Some(&content));
+                        label.set_wrap(true);
+                        label.set_max_width_chars(50);
+                        label.set_lines(3);
+                        label.set_ellipsize(pango::EllipsizeMode::End);
+                        label.set_xalign(0.0);
 
-                        let content_label = Label::new(Some(&content));
-                        content_label.set_wrap(true);
-                        content_label.set_wrap_mode(pango::WrapMode::WordChar);
-                        content_label.set_selectable(true);
-                        content_label.set_halign(Align::Start);
+                        let ts = Label::new(Some(&timestamp));
+                        ts.set_xalign(0.0);
+                        ts.add_css_class("timestamp");
 
-                        entry_box.append(&timestamp_label);
-                        entry_box.append(&content_label);
-                        row.set_child(Some(&entry_box));
+                        row_box.append(&label);
+                        row_box.append(&ts);
+                        row.set_child(Some(&row_box));
 
-                        // Copy to clipboard when row is clicked
-                        let copy_text = content.clone();
-                        let gesture = GestureClick::new();
-                        gesture.connect_pressed(move |_, _, _, _| {
+                        let content_clone = content.clone();
+                        row.connect_activate(move |_| {
                             if let Some(display) = Display::default() {
                                 let clipboard = display.clipboard();
-                                clipboard.set_text(&copy_text);
+                                clipboard.set_text(&content_clone);
                             }
                         });
-                        row.add_controller(gesture);
 
                         list_box.append(&row);
-                        row.show();
                     }
                 }
-            }
-        };
+            };
 
-        // First render
-        update_list();
+            update_list();
 
-        // Watch for refresh signal
-        {
-            let list_box_ref = list_box_ref.clone();
-            glib::source::idle_add_local(clone!(@strong rx => move || {
-                while rx.borrow_mut().try_recv().is_ok() {
-                    update_list();
+            clear_button.connect_clicked({
+                let list_box_ref = list_box_ref.clone();
+                move |_| {
+                    let conn = db::init_db().unwrap();
+                    db::clear_history(&conn);
+                    let list_box = &*list_box_ref.borrow();
+                    while let Some(row) = list_box.first_child() {
+                        list_box.remove(&row);
+                    }
                 }
-                glib::ControlFlow::Continue
-            }));
+            });
+
+            // Poll every few seconds for updates
+            glib::timeout_add_local(std::time::Duration::from_secs(3), {
+                let update_list = update_list.clone();
+                move || {
+                    update_list();
+                    ControlFlow::Continue
+                }
+            });
+
+            // Update when receiver signals change
+            let update_list_clone = update_list.clone();
+            let rx_clone = rx.clone();
+            glib::source::idle_add_local(move || {
+                while rx_clone.borrow().try_recv().is_ok() {
+                    update_list_clone();
+                }
+                ControlFlow::Continue
+            });
         }
-
-        // Scroller wrapping the list
-        let scroller = ScrolledWindow::builder()
-            .vexpand(true)
-            .hexpand(true)
-            .min_content_height(400)
-            .build();
-
-        scroller.set_child(Some(&*list_box_ref.borrow()));
-        vbox.append(&scroller);
-        win.set_child(Some(&vbox));
-        win.show();
     });
 
     app.run();

@@ -1,17 +1,26 @@
-.entry-row {
-    background-color: #e8e8e8;
-    border-radius: 6px;
-    padding: 10px;
-    margin: 6px;
+.clip-row {
+  background-color: #e6e4e4;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 6px 10px;
+  font-family: "Fira Code", "JetBrains Mono", monospace;
+  color: #222;
+  transition: background-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+  border: 1px solid #ddd;
 }
 
-.entry-row:selected {
-    background-color: #005fbf;
-    color: white;
+.clip-row:hover {
+  background-color: #eaeaea;
+  box-shadow: 0 0 0 2px #ccc;
+}
+
+.clip-row:selected {
+  background-color: #cce0ff;
+  color: #000;
 }
 
 .timestamp {
-    font-size: small;
-    color: #777;
-    margin-bottom: 4px;
+  font-size: 11px;
+  color: #666;
+  margin-top: 6px;
 }

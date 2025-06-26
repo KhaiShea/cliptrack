@@ -1,28 +1,38 @@
-// Import SQLite connection and query macro
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection, Result};
+use chrono::Local;
 
-/// Creates (or opens) the SQLite database and ensures the clipboard table exists
-pub fn init() -> Connection {
-    // Open a file named cliptrack.db in the current directory
-    let conn = Connection::open("cliptrack.db").expect("Failed to open DB");
-
-    // Create a table for clipboard entries if it doesn't exist yet
+pub fn init_db() -> Result<Connection> {
+    let conn = Connection::open("cliptrack.db")?;
     conn.execute(
         "CREATE TABLE IF NOT EXISTS clipboard (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,         -- unique ID for each entry
-            content TEXT NOT NULL,                        -- the copied text
-            copied_at DATETIME DEFAULT CURRENT_TIMESTAMP  -- when it was copied
+            id INTEGER PRIMARY KEY,
+            content TEXT NOT NULL,
+            timestamp TEXT NOT NULL
         )",
         [],
-    ).expect("Failed to create table");
-
-    conn
+    )?;
+    Ok(conn)
 }
 
-/// Inserts a new clipboard entry into the database
-pub fn save_clip(conn: &Connection, content: &str) {
-    conn.execute(
-        "INSERT INTO clipboard (content) VALUES (?)",
-        params![content], // Use ? to safely insert the variable
-    ).expect("Failed to insert clipboard entry");
+pub fn insert_clip(conn: &Connection, content: &str) {
+    let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let _ = conn.execute(
+        "INSERT INTO clipboard (content, timestamp) VALUES (?1, ?2)",
+        params![content, timestamp],
+    );
+}
+
+pub fn get_all_clips(conn: &Connection) -> Vec<(String, String)> {
+    let mut stmt = conn
+        .prepare("SELECT content, timestamp FROM clipboard ORDER BY id DESC LIMIT 50")
+        .unwrap();
+    let rows = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap();
+
+    rows.map(|r| r.unwrap()).collect()
+}
+
+pub fn clear_history(conn: &Connection) {
+    let _ = conn.execute("DELETE FROM clipboard", []);
 }
